@@ -1,0 +1,57 @@
+/* ==========================================================================
+   THE SITE'S LOOK, IN ONE PLACE
+   Change a font, size or color here and every page, control and figure label
+   follows. Nothing else in the project hard-codes a page font or color.
+   ========================================================================== */
+:root{
+  /* Fonts: system fonts, so nothing downloads and text appears at once */
+  --font-heading:Charter,"Bitstream Charter","Iowan Old Style","Sitka Text",Cambria,"Noto Serif",Georgia,serif;
+  --font-body:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+
+  /* Text sizes */
+  --text-sm:.9375rem;                      /* captions, tables, controls */
+  --text-body:1.125rem;                    /* article text */
+  --text-card:clamp(1.3rem,2vw,1.55rem);   /* module titles on the homepage */
+  --text-h2:1.6rem;                        /* section headings */
+  --text-h1:clamp(2rem,4.6vw,3.1rem);      /* article titles */
+  --text-masthead:clamp(2.2rem,6vw,4rem);  /* homepage title */
+
+  /* Text details */
+  --weight-heading:700;
+  --weight-strong:620;
+  --leading-body:1.65;
+  --leading-heading:1.14;
+  --tracking-heading:-.014em;
+
+  /* Layout */
+  --measure:42rem;        /* width of article text */
+  --wide:70rem;           /* width of figures and the homepage grid */
+  --gutter:clamp(18px,4vw,40px);
+  --radius:12px;
+
+  /* Colors: light */
+  color-scheme:light;
+  --bg:#ffffff;
+  --surface:#f4f6f8;
+  --ink:#15171c;
+  --muted:#555b66;
+  --line:#dfe3e8;
+  --accent:#1f56c4;
+
+  /* Figures keep a dark stage in both themes */
+  --stage-bg:#000000;
+  --stage-ink:#ecebe8;
+  --stage-muted:#a2a5a9;
+  --stage-line:transparent;
+  --figure-label:12px;    /* smallest label drawn inside a figure */
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111317;
+  --surface:#1a1d22;
+  --ink:#eceef1;
+  --muted:#a3a9b4;
+  --line:#363b45;
+  --accent:#8db4ff;
+  --stage-line:#2c3038;
+}

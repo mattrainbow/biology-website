@@ -5,7 +5,7 @@
    - fixed 1/60 s simulation steps with a per-frame time budget
    - cells are drawn in batches of one colour, settled bone cells as a sprite
    - finished collagen and capillaries are baked once into offscreen layers
-   - nothing runs off screen; resolution drops if frames get slow */
+   - the shared runner stops it off screen and lowers resolution if frames get slow */
 (function () {
 'use strict';
 
@@ -71,7 +71,6 @@ const G = 22, GW = Math.ceil(W / G) + 2, GH = Math.ceil(H / G) + 2, MAXC = 4000;
 const head = new Int32Array(GW * GH), next = new Int32Array(MAXC), gcx = new Int32Array(MAXC), gcy = new Int32Array(MAXC);
 const px = new Float64Array(MAXC), py = new Float64Array(MAXC), pr = new Float64Array(MAXC), pm = new Float64Array(MAXC);
 const NX = Math.ceil(L / 8) + 1, xb = x => Math.max(0, Math.min(NX - 1, Math.round((x - X0) / 8)));
-const DPRS = [2, 1.5, 1, .75];
 
 function surf(B, u0, sx, d) {
   const u = Math.min(1, Math.max(0, u0 + sx / L)), f = B === BT ? top : bot, y = f(u), y2 = f(Math.min(1, u + .002)), y1 = f(Math.max(0, u - .002));
@@ -94,19 +93,19 @@ function fiber(cx, cy, a, len, bend, dl) {
 
 function mount(root) {
   root.innerHTML =
-    '<div class="fb"><div class="fb-stage"><canvas role="img" aria-label="Animation of a beak growing left to right from a progress zone, then its cells sorting into epithelium, vascular layer, dermis and bone"></canvas></div>' +
-    '<div class="fb-ctl"><button type="button" class="fb-play">Pause</button><button type="button" class="fb-alt fb-restart">Restart</button>' +
-    '<label>Speed<input class="fb-speed" type="range" min="0.25" max="3" step="0.25" value="1"><span class="fb-spv">1×</span></label>' +
-    '<label><input class="fb-labels" type="checkbox" checked><span>Labels</span></label>' +
-    '<label><input class="fb-zone" type="checkbox" checked><span>Shade zone</span></label>' +
-    '<span class="fb-stat"></span></div></div>';
+    '<div class="ix fb"><div class="ix-stage fb-stage"><canvas role="img" aria-label="Animation of a beak growing left to right from a progress zone, then its cells sorting into epithelium, vascular layer, dermis and bone"></canvas></div>' +
+    '<div class="ix-row"><button type="button" class="ix-btn fb-play">Pause</button><button type="button" class="ix-btn quiet fb-restart">Restart</button>' +
+    '<label class="ix-field fb-speedf">Speed<input class="fb-speed" type="range" min="0.25" max="3" step="0.25" value="1"><span class="fb-spv">1×</span></label>' +
+    '<label class="ix-field"><input class="fb-labels" type="checkbox" checked>Labels</label>' +
+    '<label class="ix-field"><input class="fb-zone" type="checkbox" checked>Shade zone</label>' +
+    '<span class="ix-status fb-stat"></span></div></div>';
   const $ = s => root.querySelector(s);
-  const cv = $('canvas'), ctx = cv.getContext('2d', { alpha: false }), playB = $('.fb-play'), sp = $('.fb-speed'), spv = $('.fb-spv'), labelsOn = $('.fb-labels'), zoneOn = $('.fb-zone'), stat = $('.fb-stat');
+  const cv = $('canvas'), ctx = cv.getContext('2d'), playB = $('.fb-play'), sp = $('.fb-speed'), spv = $('.fb-spv'), labelsOn = $('.fb-labels'), zoneOn = $('.fb-zone'), stat = $('.fb-stat');
   const under = document.createElement('canvas'), over = document.createElement('canvas'), bone = document.createElement('canvas');
-  const uctx = under.getContext('2d', { alpha: false }), octx = over.getContext('2d');
+  const uctx = under.getContext('2d'), octx = over.getContext('2d');
 
   let cells, fibD, fibB, caps, pig, locF, leaveT, t, done, doneT, divisions, seed, tick = 0;
-  let running = true, speed = 1, tier = 0, scale = 1, offY = 0, viewH = H, cssW = 0, boneHalf = 20, statNext = 0;
+  let running = true, speed = 1, acc = 0, scale = 1, offY = 0, viewH = H, cssW = 0, boneHalf = 20, statNext = 0;
 
   function R() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
   function mk(x, y, r, ph) {
@@ -284,12 +283,9 @@ function mount(root) {
     for (let j = 0; j < 6; j++) { const a = j * Math.PI / 3 + (j % 2 ? .35 : -.2), d0 = j % 3 === 0 ? ea : eb * 1.1, d1 = d0 + r * 1.5; g.moveTo(Math.cos(a) * d0, Math.sin(a) * d0); g.lineTo(Math.cos(a) * d1, Math.sin(a) * d1); } g.stroke();
     g.beginPath(); g.arc(0, 0, r * .32, 0, TAU); g.fillStyle = PAL.B[FADE].nuc; g.fill();
   }
-  function resize() {
-    const cw = cv.clientWidth, ch = cv.clientHeight; if (!cw || !ch) return;
-    const dpr = Math.min(DPRS[tier], window.devicePixelRatio || 1), w = Math.round(cw * dpr), h = Math.round(ch * dpr);
-    if (cv.width === w && cv.height === h && cssW) return;
-    cssW = cw; for (const c of [cv, under, over]) { c.width = w; c.height = h; }
-    scale = w / W; viewH = h / scale; offY = viewH > 640 ? 24 : 0; // extra height on phones makes room for larger labels
+  function resize(cw, ch, dpr) {
+    cssW = cw; for (const c of [cv, under, over]) { c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr); }
+    scale = cv.width / W; viewH = cv.height / scale; offY = viewH > 600 ? (viewH - H) * (cw < 640 ? .15 : .5) : 0; // extra height on phones makes room for larger labels
     boneSprite(); clearLayers(); draw();
   }
 
@@ -419,15 +415,15 @@ function mount(root) {
     }
     // dendrites: spiky, fanning out towards the beak surface between neighbouring cells
     c.dA.forEach((o, k) => {
-      const a = outA + o * .75, len = c.r * (.9 + 1.1 * f) * (k % 2 ? .8 : 1), co = Math.cos(a), si = Math.sin(a), x1 = c.x + co * c.r * .6, y1 = c.y + si * c.r * .6, x2 = x1 + co * len, y2 = y1 + si * len;
+      const a = outA + o * .75, want = c.r * (.9 + 1.1 * f) * (k % 2 ? .8 : 1), room = Math.max(1, c.dep / Math.max(.3, Math.cos(o * .75)) - c.r * .6), len = Math.min(want, room), co = Math.cos(a), si = Math.sin(a), x1 = c.x + co * c.r * .6, y1 = c.y + si * c.r * .6, x2 = x1 + co * len, y2 = y1 + si * len;
       ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo((x1 + x2) / 2, (y1 + y2) / 2); ctx.stroke();
       ctx.lineWidth = .9; ctx.beginPath(); ctx.moveTo((x1 + x2) / 2, (y1 + y2) / 2); ctx.lineTo(x2, y2);
-      for (const s of [-.6, .6]) { ctx.moveTo(x2, y2); ctx.lineTo(x2 + Math.cos(a + s) * c.r * .5 * f, y2 + Math.sin(a + s) * c.r * .5 * f); } ctx.stroke();
+      if (len === want) for (const s of [-.6, .6]) { ctx.moveTo(x2, y2); ctx.lineTo(x2 + Math.cos(a + s) * c.r * .5 * f, y2 + Math.sin(a + s) * c.r * .5 * f); } ctx.stroke();
     });
   }
-  const FONT = 'ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif';
+  const FONT = IX.token(root, '--font-body'), LABEL = parseFloat(IX.token(root, '--figure-label')) || 12;
   function drawLabels() {
-    const u1 = W / cssW, narrow = cssW < 640, fs = Math.max(15, 12 * u1), lw = Math.max(1.2, u1); // never smaller than 12 CSS px
+    const u1 = W / cssW, narrow = cssW < 640, fs = Math.max(15, LABEL * u1), lw = Math.max(1.2, u1); // never smaller than the site's label size
     ctx.textBaseline = 'alphabetic'; ctx.font = '600 ' + fs + 'px ' + FONT; ctx.textAlign = 'center';
     ctx.save(); ctx.translate(X0 - 18, (top(0) + bot(0)) / 2); ctx.rotate(-Math.PI / 2); ctx.fillStyle = '#9a9da3'; ctx.fillText(narrow ? 'Face' : 'Attachment to the face', 0, 0); ctx.restore();
     if (!done) {
@@ -447,49 +443,46 @@ function mount(root) {
     if (!cssW) return;
     bakeFibers(fibB, '#a47c45', 1.4); bakeFibers(fibD, '#e2c995', 1);
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.drawImage(under, 0, 0); base(ctx);
-    ctx.save(); outline(ctx); ctx.clip();
     if (zoneOn.checked && !done) {
       const h = 1 / NB, zx = b => (locF[Math.max(0, b - 1)] + 2 * locF[b] + locF[Math.min(NB - 1, b + 1)]) / 4 - PZW;
-      ctx.beginPath(); for (let b = 0; b < NB; b++) { const x = zx(b), u = uOf(x), y = top(u) + thick(u) * (b + .5) * h; b ? ctx.lineTo(x, y) : ctx.moveTo(x, y - 200); }
-      ctx.lineTo(zx(NB - 1), H); ctx.lineTo(W, H); ctx.lineTo(W, 0); ctx.lineTo(zx(0), 0); ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fill();
+      // traced along the beak's own edges: a clip mask here would be far slower
+      const clampX = x => Math.max(X0, Math.min(X1, x)), xa = clampX(zx(0)), xz = clampX(zx(NB - 1));
+      ctx.beginPath(); ctx.moveTo(xa, top(uOf(xa)));
+      for (let b = 0; b < NB; b++) { const x = clampX(zx(b)), u = uOf(x); ctx.lineTo(x, top(u) + thick(u) * (b + .5) * h); }
+      ctx.lineTo(xz, bot(uOf(xz))); for (let i = 0; i < NS; i += 2) if (BXs[i] > xz) ctx.lineTo(BXs[i], BBy[i]);
+      for (let i = NS - 1; i >= 0; i -= 2) if (BXs[i] > xa) ctx.lineTo(BXs[i], BTy[i]);
+      ctx.closePath(); ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fill();
     }
     ctx.lineCap = 'round'; growFibers(fibB, '#a47c45', 1.4); growFibers(fibD, '#e2c995', 1);
     drawCells(); drawCaps();
     for (const c of neurons) dendrites(c);
-    ctx.restore();
+    // tidy anything that pokes past the face, then redraw the face line over it
+    ctx.fillStyle = '#000'; ctx.fillRect(X0 - 34, top(0) - 6, 34, TH + 12); ctx.fillStyle = '#3a3c40'; ctx.fillRect(X0 - 7, top(0) - 6, 6, TH + 12);
     if (labelsOn.checked) drawLabels();
     const now = performance.now();
     if (now > statNext) { statNext = now + 250; const s = (!done ? 'Progress zone dividing' : t - doneT < 14 ? 'Cells sorting into layers' : 'Layers formed') + ' · ' + cells.length + ' cells · ' + divisions + ' divisions'; if (stat.textContent !== s) stat.textContent = s; }
   }
 
-  // ----- main loop: runs only while playing and on screen -----
-  let visible = true, raf = 0, last = 0, acc = 0, slowSum = 0, slowN = 0;
-  function frame(now) {
-    raf = 0; const raw = now - last; last = now;
-    acc += Math.min(.1, Math.max(0, raw / 1000)) * speed;
-    const stop = performance.now() + 12;
-    while (acc >= STEP) { tick++; step(STEP); acc -= STEP; if (performance.now() > stop) { acc = 0; break; } } // slow device: run slower, never freeze
-    draw();
-    // sustained under 25 fps: lower the resolution one notch
-    if (raw > 0 && raw < 400) { slowSum += raw; if (++slowN >= 45) { if (slowSum / slowN > 40 && tier < DPRS.length - 1) { tier++; while (tier < DPRS.length - 1 && DPRS[tier] >= (window.devicePixelRatio || 1)) tier++; resize(); } slowSum = slowN = 0; } }
-    kick();
-  }
-  function kick() { if (running && visible && !raf) raf = requestAnimationFrame(frame); }
-  function wake() { if (running && visible && !raf) { last = performance.now(); slowSum = slowN = 0; kick(); } }
-  function setRunning(v) { running = v; playB.textContent = v ? 'Pause' : 'Play'; if (v) wake(); else if (raf) { cancelAnimationFrame(raf); raf = 0; } }
+  // ----- playback -----
+  const run = IX.runner(cv, {
+    resize: resize,
+    frame: dt => {
+      acc += dt * speed;
+      const stop = performance.now() + 12;
+      while (running && acc >= STEP) { tick++; step(STEP); acc -= STEP; if (performance.now() > stop) { acc = 0; break; } } // slow device: run slower, never freeze
+      draw(); return running;
+    }
+  });
+  function setRunning(v) { running = v; playB.textContent = v ? 'Pause' : 'Play'; if (v) run.request(); else run.stop(); }
   playB.onclick = () => setRunning(!running);
   $('.fb-restart').onclick = () => { reset(); draw(); setRunning(true); };
   sp.oninput = () => { speed = +sp.value; spv.textContent = speed + '×'; };
-  labelsOn.onchange = zoneOn.onchange = () => { if (!raf) draw(); };
-  if (window.ResizeObserver) new ResizeObserver(resize).observe(cv);
-  window.addEventListener('resize', resize);
-  if (window.IntersectionObserver) new IntersectionObserver(es => { visible = es[es.length - 1].isIntersecting; if (visible) wake(); else if (raf) { cancelAnimationFrame(raf); raf = 0; } }).observe(cv);
-  document.addEventListener('visibilitychange', () => { last = performance.now(); slowSum = slowN = 0; });
+  labelsOn.onchange = zoneOn.onchange = () => run.request();
 
-  reset(); resize();
-  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) setRunning(false); else wake();
-  root.finchBeak = { step: n => { for (let i = 0; i < n; i++) { tick++; step(STEP); } draw(); }, draw: draw, pause: () => setRunning(false), info: () => ({ t: t, cells: cells.length, divisions: divisions, done: done, tier: tier }) };
+  reset(); run.measure();
+  setRunning(!IX.reducedMotion());
+  root.interactive = { thumbnail: () => { running = false; labelsOn.checked = false; root.interactive.seek(52); }, seek: secs => { reset(); for (let i = 0; i < secs * 60; i++) { tick++; step(STEP); } statNext = 0; draw(); }, pause: () => setRunning(false), redraw: draw, info: () => ({ t: t, cells: cells.length, divisions: divisions, done: done, tier: run.tier() }) };
 }
 
-Array.prototype.forEach.call(document.querySelectorAll('[data-interactive="finch-beak"]'), mount);
+IX.define('finch-beak', mount);
 })();

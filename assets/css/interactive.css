@@ -1,0 +1,28 @@
+/* Shared look of every interactive: the dark stage and its controls. */
+.ix{font-size:var(--text-sm);line-height:1.5}
+.ix-stage{position:relative;overflow:hidden;background:var(--stage-bg);color:var(--stage-ink);border:1px solid var(--stage-line);border-radius:var(--radius)}
+.ix-stage canvas{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
+.ix-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin-top:14px}
+.ix-btn{font:var(--weight-strong) var(--text-sm)/1.2 var(--font-body);min-height:44px;padding:0 20px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:var(--bg);cursor:pointer;touch-action:manipulation}
+.ix-btn.quiet{background:transparent;color:var(--ink);border-color:var(--line)}
+.ix-btn:hover{opacity:.86}
+.ix-btn.quiet:hover{opacity:1;background:var(--surface)}
+.ix-btn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.ix-btn:focus-visible{border-radius:999px}
+.ix-field{display:inline-flex;align-items:center;gap:9px;min-height:44px;cursor:pointer}
+.ix-field select{font:inherit;min-height:44px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.ix input{accent-color:var(--ink);margin:0}
+.ix input[type=range]{width:130px;min-height:44px}
+.ix input[type=checkbox],.ix input[type=radio]{width:19px;height:19px;flex:none}
+.ix .grow{flex:1 1 220px}
+.ix-chips{gap:8px}
+.ix-chips .ix-btn{padding:0 15px;font-weight:500}
+.ix-status{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+.ix-note{margin:14px 0 0;color:var(--muted);max-width:72ch}
+.ix-fail{padding:32px;color:var(--stage-ink)}
+@media(max-width:640px){
+  .article>.wide.figure{padding:0}
+  .ix-stage{border-radius:0;border-left:0;border-right:0}
+  .ix-row,.ix-note{padding:0 var(--gutter)}
+  .ix-status{margin-left:0;width:100%;order:-1}
+}

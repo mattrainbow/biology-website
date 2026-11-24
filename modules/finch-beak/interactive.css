@@ -1,0 +1,8 @@
+.fb-stage::before{content:"";display:block;padding-top:46.667%}
+.fb-spv{min-width:3em;font-variant-numeric:tabular-nums}
+@media(max-width:640px){
+  .fb-stage::before{padding-top:60%}
+  .fb .ix-btn{flex:1 1 40%}
+  .fb-speedf{flex:1 1 100%}
+  .ix .fb-speed{flex:1}
+}

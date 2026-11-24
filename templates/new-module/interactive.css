@@ -1,0 +1,2 @@
+/* Only what is special to this module. Shared looks live in assets/css/interactive.css. */
+.ix-stage::before{content:"";display:block;padding-top:56.25%}
